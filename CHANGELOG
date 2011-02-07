@@ -1,6 +1,7 @@
 #	Version 0.2
 #	Added support for random strings when checking for wildcard
-#
+#	Added a wildcard only check (wildcard checks will still be called during 
+#	IPv4 and IPv6 host dumps)
 #
 
 
