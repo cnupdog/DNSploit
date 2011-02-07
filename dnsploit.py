@@ -26,7 +26,7 @@ import sys, getopt
 bruteHostNames=['accounting','accounts','alpha','apple','banking','blackboard','blog','blog1','blogs','carro','cart','catalog','chart','chat','cisco','correoweb','dc','dev-www','development','dns','download','downloads','drupal','drupal6','email','exch','exchange','file','file01','file1','files','filesrv','finance','firewall','forum','forums','ftp','gallery','gamma','groups','help','home','images','imap','imaps','irc','juniper','life','linux','lists','mail','main','members','microsoft','mon','monitor','mysql','news','ns1','ns2','ns3','omega','online','oracle','partner','partners','people','pop','pops','portal','purchase','radio','remote','sales','search','secure','server','services','shop','smtp','snort','sql','srv','ssh','staff','stream','streaming','sun','support','test','test1','test2','upload','users','video','videos','voice','vpn','web','web-dev','web1','web2','web3','webcam','webct','web-dev','webdev','webmail','wordpress','ww0','www','www-dev','www1','www2','www3','www4','www5','www6','www7','www8','www9']
 
 #Version 
-version = "0.1"
+version = "0.2"
 
 def usage():
 	print "\nDnsploit "+ version + " by Mike Romano"
@@ -86,6 +86,19 @@ def argParse(argv):
 		usage()
 		sys.exit(2)
 
+
+def _random():
+	import random
+	charset = 'abcdefghijklmnopqrstuvwxyzABDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+	min = 8
+	max = 12
+	randomString = ''
+	for count in xrange(4,5):
+		for x in random.sample(charset,random.randint(min,max)):
+			randomString+=x
+	return randomString
+	
+
 def _main(argv):
 	
 	(setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, zoneXfer, dom) = argParse(argv)
@@ -140,7 +153,7 @@ def _hostDump(dom):
 			except:
 				print "\n"
 		try:
-			for record in query('sadjdfmewuc.'+domain, 'A'):
+			for record in query(_random()+'.'+domain, 'A'):
 				print "\n!!!!! Wildcard in place at "+record.address+" !!!!!\n"
 		except:
 			print "\nWildcard not present\n"				
@@ -162,7 +175,7 @@ def _hostDumpv6(dom):
 			except:
 				print "\n"
 		try:
-			for record in query('sadjdfmewuc.'+domain, 'AAAA'):
+			for record in query(_random()+'.'+domain, 'AAAA'):
 				print "\n!!!!! Wildcard in place at "+record.address+" !!!!!\n"
 		except:
 			print "\nWildcard not present\n"				
