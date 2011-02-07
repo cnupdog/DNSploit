@@ -1,0 +1,16 @@
+#DNSploit Python DNS tool
+#This tool is designed for testing purposes only
+#Do not use this tool against a public DNS or any DNS not owned by you
+
+#Requirements
+#Python 2.6+
+#package dnspython
+
+#if you are using Ubuntu/Debian you may use the following
+#sudo apt-get install python-setuptools
+#sudo easy_install -U dnspython
+
+#from there simply give the file executable permissions
+#./dnsploit <options>
+
+#type ./dnsploit -h  for help
