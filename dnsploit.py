@@ -41,6 +41,7 @@ def usage():
 	print "-z, --zone		Start Zone Transfer"
 	print "-h, --help		Print this help message"
 	print "-x, --all		Run all DNS attacks **Use with caution**"
+	print "-w, --wildcard		Check for wildcard only (IPv4 & IPv6)"
 	print ""
 	print "Example:			"
 	print "dnsploit -d mydomain.com -a"
@@ -55,10 +56,11 @@ def argParse(argv):
 	serviceDump = False
 	zoneXfer = False
 	mailDump = False
+	wildcardCheck = False
 	setAll = False
 	dom = 'mydomain.org'
 	try: 
-		opts, args = getopt.getopt(argv, "hnaxAcsmzd:",["help","ipv4","all","ipv6","domain=","cname","service","mail","zone"])
+		opts, args = getopt.getopt(argv, "hnaxAcsmzwd:",["help","ipv4","all","ipv6","domain=","cname","service","mail","zone"])
 		for opt, arg in opts:
 			if opt in ("-h", "--help"):
 				usage()
@@ -81,7 +83,9 @@ def argParse(argv):
 				zoneXfer = True
 			elif opt in ("-d","--domain"):
 				dom = arg
-		return (setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, zoneXfer, dom)
+			elif opt in ("-w","--wildcard"):
+				wildcardCheck = True	
+		return (setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, zoneXfer, dom, wildcardCheck)
 	except getopt.GetoptError:
 		usage()
 		sys.exit(2)
@@ -101,7 +105,7 @@ def _random():
 
 def _main(argv):
 	
-	(setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, zoneXfer, dom) = argParse(argv)
+	(setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, zoneXfer, dom, wildcardCheck) = argParse(argv)
 	if dom == "mydomain.org":
 		print "\n** Domain Not Specified, Please Specify a Domain **\n"
 		usage()
@@ -114,6 +118,8 @@ def _main(argv):
 		_serviceDump(dom)
 		_mailDump(dom)
 		sys.exit(2)
+	if wildcardCheck == True:
+		_wildcardCheck(dom)
 	if nsDump == True:
 		_nsDump(dom)
 	if ipv4Dump == True:
@@ -128,7 +134,6 @@ def _main(argv):
 		_mailDump(dom)
 	if zoneXfer == True:
 		print "Zone transfers not supported in this version"
-	print 'Done'
 	
 def _nsDump(dom):
 	try:
@@ -140,6 +145,19 @@ def _nsDump(dom):
 		print "Nameserver Records unavailable\n"	
 		print "---------------"
 	
+def _wildcardCheck(dom):	
+		try:
+			for record in query(_random()+'.'+domain, 'A'):
+				print "\n!!!!! IPv4 Wildcard in place at "+record.address+" !!!!!\n"
+		except:
+			print "\nIPv4 Wildcard not present\n"
+				
+		try:
+			for record in query(_random()+'.'+domain, 'AAAA'):
+				print "\n!!!!! IPv6 Wildcard in place at "+record.address+" !!!!!\n"
+		except:
+			print "\nIPv6 Wildcard not present\n"
+				
 def _hostDump(dom):	
 	try:
 		print "\nDumping IPv4 Hosts (A)\n"		
@@ -152,11 +170,7 @@ def _hostDump(dom):
 					print "\t"+request, 'A', record.address
 			except:
 				print "\n"
-		try:
-			for record in query(_random()+'.'+domain, 'A'):
-				print "\n!!!!! Wildcard in place at "+record.address+" !!!!!\n"
-		except:
-			print "\nWildcard not present\n"				
+		_wildcardCheck(dom)
 		print "---------------"
 	except:
 		print "IPv4 Hosts unavailable\n"
@@ -174,11 +188,7 @@ def _hostDumpv6(dom):
 					print "\t"+request, 'AAAA', record.address
 			except:
 				print "\n"
-		try:
-			for record in query(_random()+'.'+domain, 'AAAA'):
-				print "\n!!!!! Wildcard in place at "+record.address+" !!!!!\n"
-		except:
-			print "\nWildcard not present\n"				
+		_wildcardCheck(dom)
 		print "---------------"
 	except:
 		print "IPv6 Hosts unavailable\n"
