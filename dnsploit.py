@@ -280,7 +280,10 @@ def zone_xfer(dom,remote_host):
 		responses = result_set.nodes.keys()
 		responses.sort()
 		for i in responses:
-			print result_set[i].to_text(i)
+			try:
+				print result_set[i].to_text(i)
+			except:
+				pass #If a zone file has bad records ignore it and move on
 	except:
 		print "Zone Transfer Unavailable from host "+remote_host
 
