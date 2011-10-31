@@ -1,10 +1,18 @@
+#	Version 1.0
+#	Added support for Zone Transfers
+#	Added support for brute forcing PTR records for a given IPv4 subnet of any size
+#
+#	Changed how results are displayed - queries that do not yield a result are no longer displayed
+#	Added additional common words to the dictionary list
+#-------------------------------------------------------------------------------------
+#
 #	Version 0.2
 #	Added support for random strings when checking for wildcard
 #	Added a wildcard only check (wildcard checks will still be called during 
 #	IPv4 and IPv6 host dumps)
 #
-
-
+#-------------------------------------------------------------------------------------
+#
 #	Version 0.1
 #
 #	First version, use for DNS dumping
