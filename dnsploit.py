@@ -20,16 +20,18 @@
 
 #Import dnspython libraries and system utilities
 from dns.resolver import query
-import sys, getopt
+import sys, getopt, dns.zone
+from dns import resolver,reversename
 
 #Wordlist for common hosts
-bruteHostNames=['accounting','accounts','alpha','apple','banking','blackboard','blog','blog1','blogs','carro','cart','catalog','chart','chat','cisco','correoweb','dc','dev-www','development','dns','download','downloads','drupal','drupal6','email','exch','exchange','file','file01','file1','files','filesrv','finance','firewall','forum','forums','ftp','gallery','gamma','groups','help','home','images','imap','imaps','irc','juniper','life','linux','lists','mail','main','members','microsoft','mon','monitor','mysql','news','ns1','ns2','ns3','omega','online','oracle','partner','partners','people','pop','pops','portal','purchase','radio','remote','sales','search','secure','server','services','shop','smtp','snort','sql','srv','ssh','staff','stream','streaming','sun','support','test','test1','test2','upload','users','video','videos','voice','vpn','web','web-dev','web1','web2','web3','webcam','webct','web-dev','webdev','webmail','wordpress','ww0','www','www-dev','www1','www2','www3','www4','www5','www6','www7','www8','www9']
+bruteHostNames=['accounting','accounts','admin','alpha','apple','apps','autodiscover','banking','blackboard','blog','blog1','blogs','campaign','campaigns','carro','cart','catalog','chart','chat','cisco','conference','correoweb','data','database','db','db1','db2','dc','dev','dev-www','developers','development','dns','download','downloads','drupal','drupal6','drupal7','email','exch','exchange','facebook','file','file01','file1','files','filesrv','finance','firewall','forms','forum','forums','ftp','gallery','gamma','groups','help','helpdesk','home','images','imap','imaps','info','irc','juniper','legal','life','linux','lists','mail','main','members','microsoft','mon','monitor','mysql','news','ns1','ns2','ns3','omega','online','oracle','partner','partners','people','pop','pops','portal','project','projects','purchase','radio','remote','sales','search','secure','server','services','sftp','shop','smtp','snort','sql','srv','ssh','staff','stage','staging','stg','storelocator','stream','streaming','sun','support','svn','svn1','test','test1','test2','upload','users','video','videos','voice','vpn','web','web-dev','web1','web2','web3','webcam','webct','web-dev','webdev','webex','webdrive','webmail','wiki','wordpress','ww0','www','www-dev','www1','www2','www3','www4','www5','www6','www7','www8','www9']
 
 #Version 
-version = "0.2"
+version = "1.0"
 
+#How to use
 def usage():
-	print "\nDnsploit "+ version + " by Mike Romano"
+	print "\nDNSploit "+ version + " by Mike Romano"
 	print "Usage: dnsploit <options>\n"
 	print "Options:"
 	print "-d, --domain 		Set attack domain **REQUIRED**"
@@ -38,6 +40,8 @@ def usage():
 	print "-c, --cname		Brute Force Aliases (CNAME)"
 	print "-s, --service		Dump Service Records (SRV)"
 	print "-m, --mail		Dump Mail Records (MX)"
+	print "-n, --ns			Dump Name Servers (NS)"
+	print "-r, --ptr		Dump Reverse records (PTR)"
 	print "-z, --zone		Start Zone Transfer"
 	print "-h, --help		Print this help message"
 	print "-x, --all		Run all DNS attacks **Use with caution**"
@@ -45,22 +49,30 @@ def usage():
 	print ""
 	print "Example:			"
 	print "dnsploit -d mydomain.com -a"
-	print "\tThis will run a dictionary brute force IPv4 lookup against mydomain.com"
+	print "\tThis will run a dictionary brute force IPv4 lookup against mydomain.com\n"
+	print "dnsploit -d mydomain.com -z 127.0.0.1"
+	print "\tThis will attempt to pull the zone file from remote DNS at IP 127.0.0.1\n"
+	print "dnsploit -d mydomain.com -r 192.168.1.0/24"
+	print "\tThis will attempt to pull all PTR records in the 192.16.1.0 255.255.255.0 subnet"
 	print ""
 
-def argParse(argv):
+#Initial arguments for what options to execute
+def arg_parse(argv):
 	nsDump = False
 	ipv4Dump = False
 	ipv6Dump = False
 	cnameDump = False
 	serviceDump = False
-	zoneXfer = False
+	remote_host = False
 	mailDump = False
 	wildcardCheck = False
 	setAll = False
+	#Default the following values to prevent error
 	dom = 'mydomain.org'
+	remote_host = '127.0.0.1'
+	ptrDump = '127.0.0.1/32'
 	try: 
-		opts, args = getopt.getopt(argv, "hnaxAcsmzwd:",["help","ipv4","all","ipv6","domain=","cname","service","mail","zone"])
+		opts, args = getopt.getopt(argv, "hnaxAcsmz:wr:d:",["help","ipv4","all","ipv6","domain=","cname","service","mail","zone=","ptr="])
 		for opt, arg in opts:
 			if opt in ("-h", "--help"):
 				usage()
@@ -79,19 +91,22 @@ def argParse(argv):
 				serviceDump = True
 			elif opt in ("-m", "--mail"):
 				mailDump = True
+			elif opt in("-r","--ptr"):
+				ptrDump = arg
 			elif opt in ("-z", "--zone"):
-				zoneXfer = True
+				remote_host = arg
 			elif opt in ("-d","--domain"):
 				dom = arg
 			elif opt in ("-w","--wildcard"):
 				wildcardCheck = True	
-		return (setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, zoneXfer, dom, wildcardCheck)
+		return (setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, remote_host, dom, wildcardCheck, ptrDump)
 	except getopt.GetoptError:
 		usage()
 		sys.exit(2)
 
 
 def _random():
+	#This is used for testing wildcards - if a random string @ domain is present, the odds are high that a wildcard exists
 	import random
 	charset = 'abcdefghijklmnopqrstuvwxyzABDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 	min = 8
@@ -105,37 +120,40 @@ def _random():
 
 def _main(argv):
 	
-	(setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, zoneXfer, dom, wildcardCheck) = argParse(argv)
+	(setAll, nsDump, ipv4Dump, ipv6Dump, cnameDump, serviceDump, mailDump, remote_host, dom, wildcardCheck,ptrDump) = arg_parse(argv)
 	if dom == "mydomain.org":
 		print "\n** Domain Not Specified, Please Specify a Domain **\n"
 		usage()
 		sys.exit(2)
 	if setAll == True:
-		_nsDump(dom)
-		_hostDump(dom)
-		_hostDumpv6(dom)
-		_cnameDump(dom)
-		_serviceDump(dom)
-		_mailDump(dom)
+		ns_dump(dom)
+		host_dump(dom)
+		host_dump_v6(dom)
+		cname_dump(dom)
+		service_dump(dom)
+		mail_dump(dom)
 		sys.exit(2)
 	if wildcardCheck == True:
-		_wildcardCheck(dom)
+		wildcard_check(dom)
 	if nsDump == True:
-		_nsDump(dom)
+		ns_dump(dom)
 	if ipv4Dump == True:
-		_hostDump(dom)
+		host_dump(dom)
 	if ipv6Dump == True:
-		_hostDumpv6(dom)
+		host_dump_v6(dom)
 	if cnameDump == True:
-		_cnameDump(dom)
+		cname_dump(dom)
 	if serviceDump == True:
-		_serviceDump(dom)
+		service_dump(dom)
 	if mailDump == True:
-		_mailDump(dom)
-	if zoneXfer == True:
-		print "Zone transfers not supported in this version"
-	
-def _nsDump(dom):
+		mail_dump(dom)
+	if remote_host != '127.0.0.1':
+		zone_xfer(dom,remote_host)
+	if ptrDump !='127.0.0.1/32':
+		ptr_driver(ptrDump)
+
+#Dump Nameserver Records (NS)
+def ns_dump(dom):
 	try:
 		print "\nDumping Nameserver Records (NS)\n"
 		for record in query(dom, 'NS'):
@@ -144,70 +162,72 @@ def _nsDump(dom):
 	except:
 		print "Nameserver Records unavailable\n"	
 		print "---------------"
-	
-def _wildcardCheck(dom):	
+
+#Check if Wildcard exists	
+def wildcard_check(dom):	
 		try:
 			for record in query(_random()+'.'+domain, 'A'):
 				print "\n!!!!! IPv4 Wildcard in place at "+record.address+" !!!!!\n"
 		except:
-			print "\nIPv4 Wildcard not present\n"
+			print "\nIPv4 Wildcard not present"
 				
 		try:
 			for record in query(_random()+'.'+domain, 'AAAA'):
 				print "\n!!!!! IPv6 Wildcard in place at "+record.address+" !!!!!\n"
 		except:
-			print "\nIPv6 Wildcard not present\n"
-				
-def _hostDump(dom):	
+			print "\nIPv6 Wildcard not present"
+			
+#Check against word list for existing hosts (IPv4 - A records)	
+def host_dump(dom):	
 	try:
 		print "\nDumping IPv4 Hosts (A)\n"		
 		for i in bruteHostNames:
 			request = str(i)+'.'+str(dom)
-			print request	
 			try:
-
 				for record in query(request, 'A'):
+					print request
 					print "\t"+request, 'A', record.address
 			except:
-				print "\n"
-		_wildcardCheck(dom)
+				pass
+		wildcard_check(dom)
 		print "---------------"
 	except:
 		print "IPv4 Hosts unavailable\n"
 		
 		print "---------------"
 
-def _hostDumpv6(dom):
+#Check against word list for existing hosts (IPv6 - AAAA records)
+def host_dump_v6(dom):
 	try:
 		print "\nDumping IPv6 Hosts (A)\n"		
 		for i in bruteHostNames:
 			request = str(i)+'.'+str(dom)
-			print request	
 			try:
 				for record in query(request, 'AAAA'):
+					print request	
 					print "\t"+request, 'AAAA', record.address
 			except:
-				print "\n"
-		_wildcardCheck(dom)
+				pass
+		wildcard_check(dom)
 		print "---------------"
 	except:
 		print "IPv6 Hosts unavailable\n"
 		
 		print "---------------"
 	
-	
-def _cnameDump(dom):
+#Check for alias (CNAME) records
+def cname_dump(dom):
 	try:
 		print "\nDumping Aliases (CNAME)\n"
 	
 		for i in bruteHostNames:
 			request = str(i)+'.'+str(dom)
-			print request
 			try:
 				for record in query(request, 'CNAME'):
+					print request
 					print "\t"+request, 'CNAME', record.target
 			except:
-				print "\n"
+				pass
 		print "---------------"
 	
 	except:
@@ -215,7 +235,8 @@ def _cnameDump(dom):
 		
 		print "---------------"
 
-def _mailDump(dom):
+#Check for Mail (MX) records
+def mail_dump(dom):
 	try:
 		print "\nDumping Mail Records (MX)\n"
 		for record in query(dom, 'MX'):
@@ -228,7 +249,8 @@ def _mailDump(dom):
 		
 		print "---------------"
 	
-def _serviceDump(dom):
+#Check for service SRV records
+def service_dump(dom):
 	try:
 		print "\nDumping Service Records (SRV)\n"
 		for record in query(dom,'SRV'):
@@ -240,9 +262,190 @@ def _serviceDump(dom):
 	
 		print "---------------"
 
-def _zoneXfer():
-	print "zone unavailable"
+#Reverse dump - look for PTR records
+def ptr_dump(ip):	
+	try:
+		ptr_addr = reversename.from_address(ip)
+		ans= str(resolver.query(ptr_addr,"PTR")[0])
+		if ans:
+			print ip
+			print "\t"+ans
+	except:
+		pass
 
+#Attempt zone trasfer of domain: dom on host: remote_host
+def zone_xfer(dom,remote_host):
+	try:
+		result_set = dns.zone.from_xfr(dns.query.xfr(remote_host,dom))
+		responses = result_set.nodes.keys()
+		responses.sort()
+		for i in responses:
+			print result_set[i].to_text(n)
+	except:
+		print "Zone Transfer Unavailable from host "+remote_host
+
+
+#PTR Record Support - Brute Force
+def ptr_usage():
+	print """\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nWhen brute forcing a set of PTR records, use the following format:
+IPADDRESS/SUBNET
+As in:  192.168.1.0/24
+
+Invalid addresses and subnet masks will not be accepted\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
+
+#Display some messages if the format is not IP/Subnet
+def _ip_block_validate(ipblock):
+	try:
+		block_one = ipblock.split(".")[0]
+        	block_two = ipblock.split(".")[1]
+        	block_three = ipblock.split(".")[2]
+        	block_four = ipblock.split(".")[3].split("/")[0]
+        	subnet = ipblock.split("/")[1]
+		if int(block_one) > 255 or int(block_one) < 0:
+			print "\nOctet ONE is out of range [0-255]\n"
+			exit()
+		if int(block_two) > 255 or int(block_two) < 0:
+			print "\nOctet TWO is out of range [0-255]\n"
+			exit()
+		if int(block_three) > 255 or int(block_three) < 0:
+			print "\nOctet THREE is out of range [0-255]\n"
+			exit()
+		if int(block_four) > 255 or int(block_four) < 0:
+			print "\nOctet FOUR is out of range [0-255]\n"
+			exit()
+		if int(subnet) > 32 or int(subnet) < 0:
+			print "\nSubnet is out of range [0-32]\n"
+			exit()
+		else:
+			pass
+	except:
+		usage()
+		ptr_usage()
+		exit()
+
+#Steps to convert and brute force
+def ptr_driver(ipblock):
+	#Split the IP/Subnet into 4 octets, 1 slash format subnet
+	_ip_block_validate(ipblock)
+	block_one = ipblock.split(".")[0]
+	block_two = ipblock.split(".")[1]
+	block_three = ipblock.split(".")[2]
+	block_four = ipblock.split(".")[3].split("/")[0]
+	subnet = ipblock.split("/")[1]
+
+	#Put the blocks in order and calculate the hosts and legitimate subnet mask
+	one = int(subnet)
+	two = one-8
+	three = two - 8
+	four = three - 8
+	block = str(verify_enum_block(one,two,three,four))
 	
+	#Begin enumeration
+	enumerate_block(block_one,block_two,block_three,block_four,block)
+
+#Keep all subnets at 8 bits or less - they are evaluated per octet
+def filter_num(num):
+
+        if num > 8:
+                num = 8
+        return num
+
+#Convert slash format to decimal
+def check(num):
+        num=filter_num(num)
+        if num == 8:
+                return 255
+        elif num == 7:
+                return 254
+        elif num == 6:
+                return 252
+        elif num == 5:
+                return 248
+        elif num == 4:
+                return 240
+        elif num == 3:
+                return 224
+        elif num == 2:
+                return 192
+        elif num == 1:
+                return 128
+        elif num == 0:
+                return 0
+        else:
+		return 0
+
+#Get accurate number of hosts in given subnet
+def get_hosts(num):
+        a = 256/(2**abs(num))
+        return a
+
+#Enumerate octets one,two,three,four
+def enum_block_one(block_one,block_two,block_three,block_four,host_val):
+                ref_point = 0
+                while int(block_two) < int(host_val):
+                        result= str(str(block_one)+"."+str(block_two)+"."+str(block_three)+"."+str(block_four))
+                        ptr_dump(result)
+                        enum_block_two(block_one,block_two,block_three,block_four,256)
+                        ref_point=ref_point+1
+                        block_one=int(block_one)+1
+def enum_block_two(block_one,block_two,block_three,block_four,host_val):
+                ref_point = 0
+                while int(block_two) < int(host_val):
+                        result= str(str(block_one)+"."+str(block_two)+"."+str(block_three)+"."+str(block_four))
+                        ptr_dump(result)
+                        enum_block_three(block_one,block_two,block_three,block_four,256)
+                        ref_point=ref_point+1
+                        block_two=int(block_two)+1
+def enum_block_three(block_one,block_two,block_three,block_four,host_val):
+                ref_point = 0
+                while int(block_three) < int(host_val):
+                        result= str(str(block_one)+"."+str(block_two)+"."+str(block_three)+"."+str(block_four))
+                        ptr_dump(result)
+                        enum_block_four(block_one,block_two,block_three,block_four,256)
+                        ref_point=ref_point+1
+                        block_three=int(block_three)+1
+
+def enum_block_four(block_one,block_two,block_three,block_four,host_val):
+                ref_point = 0
+                while (ref_point+int(block_four)) < int(host_val):
+                        result= str(str(block_one)+"."+str(block_two)+"."+str(block_three)+"."+str(int(block_four)+ref_point))
+                        ptr_dump(result)
+                        ref_point=ref_point+1
+
+#Perform enumeration based on subnet
+def enumerate_block(block_one,block_two,block_three,block_four,block):
+        block_num=block.split(":")[0]
+        host_val=block.split(":")[1]
+        if block_num == "1":
+                enum_block_one(block_one,block_two,block_three,block_four,host_val)
+        elif block_num =="2":
+                enum_block_two(block_one,block_two,block_three,block_four,host_val)
+        elif block_num =="3":
+                enum_block_three(block_one,block_two,block_three,block_four,host_val)
+        elif block_num =="4":
+                enum_block_four(block_one,block_two,block_three,block_four,host_val)
+        else:
+                pass
+
+#Test to see what the largest subnet is which will be enumerated
+def verify_enum_block(one,two,three,four):
+        one=get_hosts((filter_num(one)))
+        two=get_hosts((filter_num(two)))
+        three=get_hosts((filter_num(three)))
+        four=get_hosts((filter_num(four)))
+        if one > 1:
+                return ("1:"+str(one))
+        elif two > 1:
+                return ("2:"+str(two))
+        elif three > 1:
+                return ("3:"+str(three))
+        elif four > 1:
+                return ("4:"+str(four))
+        else:
+                return ("0:"+str(none))
+
+
+#Main
 if __name__ == '__main__':
 	_main(sys.argv[1:])
+
