@@ -273,14 +273,14 @@ def ptr_dump(ip):
 	except:
 		pass
 
-#Attempt zone trasfer of domain: dom on host: remote_host
+#Attempt zone transfer of domain: dom on host: remote_host
 def zone_xfer(dom,remote_host):
 	try:
 		result_set = dns.zone.from_xfr(dns.query.xfr(remote_host,dom))
 		responses = result_set.nodes.keys()
 		responses.sort()
 		for i in responses:
-			print result_set[i].to_text(n)
+			print result_set[i].to_text(i)
 	except:
 		print "Zone Transfer Unavailable from host "+remote_host
 
