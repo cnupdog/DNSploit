@@ -22,12 +22,13 @@
 from dns.resolver import query
 import sys, getopt, dns.zone
 from dns import resolver,reversename
+from multiprocessing import Process
 
 #Wordlist for common hosts
 bruteHostNames=['accounting','accounts','admin','alpha','apple','apps','autodiscover','banking','blackboard','blog','blog1','blogs','campaign','campaigns','carro','cart','catalog','chart','chat','cisco','conference','correoweb','data','database','db','db1','db2','dc','dev','dev-www','developers','development','dns','download','downloads','drupal','drupal6','drupal7','email','exch','exchange','facebook','file','file01','file1','files','filesrv','finance','firewall','forms','forum','forums','ftp','gallery','gamma','groups','help','helpdesk','home','images','imap','imaps','info','irc','juniper','legal','life','linux','lists','mail','main','members','microsoft','mon','monitor','mysql','news','ns1','ns2','ns3','omega','online','oracle','partner','partners','people','pop','pops','portal','project','projects','purchase','radio','remote','sales','search','secure','server','services','sftp','shop','smtp','snort','sql','srv','ssh','staff','stage','staging','stg','storelocator','stream','streaming','sun','support','svn','svn1','test','test1','test2','upload','users','video','videos','voice','vpn','web','web-dev','web1','web2','web3','webcam','webct','web-dev','webdev','webex','webdrive','webmail','wiki','wordpress','ww0','www','www-dev','www1','www2','www3','www4','www5','www6','www7','www8','www9']
 
 #Version 
-version = "1.0"
+version = "2.0"
 
 #How to use
 def usage():
@@ -40,7 +41,7 @@ def usage():
 	print "-c, --cname		Brute Force Aliases (CNAME)"
 	print "-s, --service		Dump Service Records (SRV)"
 	print "-m, --mail		Dump Mail Records (MX)"
-	print "-n, --ns			Dump Name Servers (NS)"
+	print "-n, --ns		Dump Name Servers (NS)"
 	print "-r, --ptr		Dump Reverse records (PTR)"
 	print "-z, --zone		Start Zone Transfer"
 	print "-h, --help		Print this help message"
@@ -134,7 +135,8 @@ def _main(argv):
 		mail_dump(dom)
 		sys.exit(2)
 	if wildcardCheck == True:
-		wildcard_check(dom)
+		wildcard_check(dom,'A')
+		wildcard_check(dom,'AAAA')
 	if nsDump == True:
 		ns_dump(dom)
 	if ipv4Dump == True:
@@ -164,72 +166,76 @@ def ns_dump(dom):
 		print "---------------"
 
 #Check if Wildcard exists	
-def wildcard_check(dom):	
-		try:
-			for record in query(_random()+'.'+domain, 'A'):
-				print "\n!!!!! IPv4 Wildcard in place at "+record.address+" !!!!!\n"
-		except:
-			print "\nIPv4 Wildcard not present"
-				
-		try:
-			for record in query(_random()+'.'+domain, 'AAAA'):
-				print "\n!!!!! IPv6 Wildcard in place at "+record.address+" !!!!!\n"
-		except:
-			print "\nIPv6 Wildcard not present"
+def wildcard_check(dom,rec_type):	
+	if rec_type=='AAAA':
+		ipv = 'IPv6'
+	else:
+		ipv = 'IPv4'
+	try:
+		for record in query(_random()+'.'+dom, rec_type):
+			print "\n!!!!! "+ipv+" Wildcard in place at "+record.address+" !!!!!\n"
+			return record.address
+	except:
+		print "\n "+ipv+ " Wildcard not present"
+		return ""
 			
 #Check against word list for existing hosts (IPv4 - A records)	
-def host_dump(dom):	
-	try:
-		print "\nDumping IPv4 Hosts (A)\n"		
-		for i in bruteHostNames:
-			request = str(i)+'.'+str(dom)
-			try:
-				for record in query(request, 'A'):
-					print request
-					print "\t"+request, 'A', record.address
-			except:
-				pass
-		wildcard_check(dom)
-		print "---------------"
-	except:
-		print "IPv4 Hosts unavailable\n"
+def host_dump(dom):
+	
+	rec_type = 'A'
+	wc_address=wildcard_check(dom,rec_type)
+	
 		
-		print "---------------"
+	print "\nDumping IPv4 Hosts (A)\n"		
 
+	try:
+		for i in bruteHostNames:
+			proc = Process(target=host_dump_resolver,args=(dom,i,wc_address,rec_type))
+			proc.start()
+	except:
+		print "\n----IPv4 Record unavailable----\n"
+		
+def host_dump_resolver(dom,i,wc_address,rec_type):
+	request = str(i)+'.'+str(dom)
+	resolver = dns.resolver.Resolver()	
+	resolver.lifetime=2.0
+	
+	try:	
+		answer = resolver.query(request,rec_type)
+	
+		for record in answer.rrset:
+	
+			if str(record) == wc_address:
+				pass	
+			else:
+				print request, rec_type, answer.rrset.ttl, record
+	except:
+		pass	
+		
 #Check against word list for existing hosts (IPv6 - AAAA records)
 def host_dump_v6(dom):
+	rec_type = 'AAAA'	
+	wc_address=wildcard_check(dom,rec_type)
+	print "\nDumping IPv6 Hosts (A)\n"		
+
 	try:
-		print "\nDumping IPv6 Hosts (A)\n"		
 		for i in bruteHostNames:
-			request = str(i)+'.'+str(dom)
-			try:
-				for record in query(request, 'AAAA'):
-					print request	
-					print "\t"+request, 'AAAA', record.address
-			except:
-				pass
-		wildcard_check(dom)
-		print "---------------"
+			proc = Process(target=host_dump_resolver,args=(dom,i,wc_address,rec_type))
+			proc.start()
 	except:
-		print "IPv6 Hosts unavailable\n"
+		print "\n----IPv6 Record unavailable----\n"
 		
-		print "---------------"
-	
 #Check for alias (CNAME) records
 def cname_dump(dom):
+	rec_type = 'CNAME'
+	wc_address=wildcard_check(dom,'A')
+
+	print "\nDumping Aliases (CNAME)\n"
 	try:
-		print "\nDumping Aliases (CNAME)\n"
-	
 		for i in bruteHostNames:
-			request = str(i)+'.'+str(dom)
-			try:
-				for record in query(request, 'CNAME'):
-					print request
-					print "\t"+request, 'CNAME', record.target
-			except:
-				pass
-		print "---------------"
-	
+			proc = Process(target=host_dump_resolver,args=(dom,i,wc_address,rec_type))
+			proc.start()
+
 	except:
 		print "Alias Records unavailable\n"
 		
@@ -268,8 +274,7 @@ def ptr_dump(ip):
 		ptr_addr = reversename.from_address(ip)
 		ans= str(resolver.query(ptr_addr,"PTR")[0])
 		if ans:
-			print ip
-			print "\t"+ans
+			print ip+"\t"+ans
 	except:
 		pass
 

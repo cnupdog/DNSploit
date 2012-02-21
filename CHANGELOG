@@ -1,9 +1,22 @@
+#       Version 2.0
+#       Added multi-threading support for A, AAAA, and CNAME lookups
+#	Requests now construct a resolver with a timeout of 2.0 seconds instead of directly calling the query library	
+#       Removed some redundancy between A, AAAA, and CNAME calls (now one method - host_dump_resolver)
+#
+#-------------------------------------------------------------------------------------
+#
+#       Version 1.1
+#	Fixed a bug with wildcards not showing properly
+#
+#-------------------------------------------------------------------------------------
+#	
 #	Version 1.0
 #	Added support for Zone Transfers
 #	Added support for brute forcing PTR records for a given IPv4 subnet of any size
 #
 #	Changed how results are displayed - queries that do not yield a result are no longer displayed
 #	Added additional common words to the dictionary list
+#
 #-------------------------------------------------------------------------------------
 #
 #	Version 0.2
