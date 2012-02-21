@@ -2,7 +2,7 @@
 
 #	DNSploit - Python DNS Reconnaissance/Exploit tool
 #
-#	Copyright Mike Romano 2011
+#	Copyright Mike Romano 2012
 #
 #	DNSploit is free software: you can redistribute it and/or modify
 #	it under the terms of the GNU General Public License as published by
